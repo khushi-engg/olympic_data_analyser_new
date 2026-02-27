@@ -1,175 +1,116 @@
-# preprocessor.py - FIXED FOR BUFFER OVERFLOW ERROR
+# preprocessor.py - FINAL VERSION WITH REAL DATA LOADING
 
 import pandas as pd
 import os
-import sys
 
 
 def preprocess():
-    """Load Olympic data with fix for buffer overflow error"""
+    """Load REAL Olympic data - NO SAMPLE DATA FALLBACK"""
 
     print("=" * 50)
-    print("PREPROCESSOR STARTED")
+    print("PREPROCESSOR - LOADING REAL OLYMPIC DATA")
     print("=" * 50)
 
-    # Get the directory where this script is located
+    # Get the current directory
+    current_dir = os.getcwd()
+    print(f"📁 Current directory: {current_dir}")
+
+    # List all files to see what's available
+    print("\n📋 Files in current directory:")
+    for file in os.listdir(current_dir):
+        if file.endswith('.csv'):
+            size = os.path.getsize(os.path.join(current_dir, file))
+            print(f"   📄 {file} - {size} bytes")
+
+    # Path to the CSV files (case sensitive!)
+    athlete_path = os.path.join(current_dir, 'athlete_events.csv')
+    noc_path = os.path.join(current_dir, 'noc_regions.csv')
+
+    print(f"\n🔍 Looking for athlete_events.csv at: {athlete_path}")
+
+    # Check if files exist
+    if not os.path.exists(athlete_path):
+        print(f"❌ athlete_events.csv NOT FOUND!")
+        print("\n🚨 CANNOT CONTINUE WITHOUT REAL DATA!")
+        print("Please ensure athlete_events.csv is in the repository.")
+        return pd.DataFrame()
+
+    file_size = os.path.getsize(athlete_path)
+    print(f"✅ Found! Size: {file_size} bytes ({file_size / 1e6:.2f} MB)")
+
+    # Try to load the real data
     try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        print(f"📁 Script directory: {current_dir}")
-    except:
-        current_dir = os.getcwd()
-        print(f"📁 Current working directory: {current_dir}")
+        print("\n📖 Loading real Olympic data...")
 
-    # Streamlit Cloud specific path
-    streamlit_cloud_path = '/mount/src/olympic_data_analyser_new/athlete_events.csv'
+        # For large files, use chunks
+        chunks = []
+        chunk_count = 0
+        for chunk in pd.read_csv(athlete_path, encoding='latin1', chunksize=100000, on_bad_lines='skip'):
+            chunk_count += 1
+            print(f"   Loaded chunk {chunk_count}: {len(chunk)} rows")
+            chunks.append(chunk)
 
-    print(f"\n🔍 Checking for file at: {streamlit_cloud_path}")
+        df = pd.concat(chunks, ignore_index=True)
+        print(f"\n✅ SUCCESS! Loaded {len(df)} total rows from REAL DATA")
 
-    if os.path.exists(streamlit_cloud_path):
-        print(f"✅ File exists! Size: {os.path.getsize(streamlit_cloud_path)} bytes")
+    except Exception as e:
+        print(f"❌ Error loading real data: {e}")
+        print("\n🚨 CANNOT CONTINUE WITHOUT REAL DATA!")
+        return pd.DataFrame()
 
-        # TRY DIFFERENT READING METHODS TO AVOID BUFFER OVERFLOW
-        print("\n📖 Attempting to read with different methods:")
-
-        # Method 1: Use chunks (most reliable for large files)
-        try:
-            print("   Method 1: Reading with chunks...")
-            chunk_iter = pd.read_csv(streamlit_cloud_path,
-                                     encoding='latin1',
-                                     chunksize=10000,
-                                     on_bad_lines='skip')
-            df = pd.concat(chunk_iter, ignore_index=True)
-            print(f"   ✅ SUCCESS! Loaded {len(df)} rows using chunks")
-        except Exception as e:
-            print(f"   ❌ Method 1 failed: {e}")
-            df = None
-
-        # Method 2: Try with different engine if method 1 failed
-        if df is None:
-            try:
-                print("   Method 2: Reading with python engine...")
-                df = pd.read_csv(streamlit_cloud_path,
-                                 encoding='latin1',
-                                 engine='python',
-                                 on_bad_lines='skip')
-                print(f"   ✅ SUCCESS! Loaded {len(df)} rows with python engine")
-            except Exception as e:
-                print(f"   ❌ Method 2 failed: {e}")
-                df = None
-
-        # Method 3: Try with low_memory=False
-        if df is None:
-            try:
-                print("   Method 3: Reading with low_memory=False...")
-                df = pd.read_csv(streamlit_cloud_path,
-                                 encoding='latin1',
-                                 low_memory=False,
-                                 on_bad_lines='skip')
-                print(f"   ✅ SUCCESS! Loaded {len(df)} rows with low_memory=False")
-            except Exception as e:
-                print(f"   ❌ Method 3 failed: {e}")
-                df = None
-    else:
-        print(f"❌ File NOT found at: {streamlit_cloud_path}")
-        return pd.DataFrame(columns=['Year', 'region', 'Medal', 'Sport', 'Name', 'City', 'Event', 'NOC', 'Season'])
-
-    if df is None:
-        print("\n❌ CRITICAL: All reading methods failed!")
-        return pd.DataFrame(columns=['Year', 'region', 'Medal', 'Sport', 'Name', 'City', 'Event', 'NOC', 'Season'])
-
-    # Load noc_regions.csv
-    noc_path = streamlit_cloud_path.replace('athlete_events.csv', 'noc_regions.csv')
-    region_df = None
-
-    print(f"\n🔍 Loading noc_regions.csv from: {noc_path}")
+    # Load region data
     if os.path.exists(noc_path):
-        try:
-            region_df = pd.read_csv(noc_path, encoding='latin1', on_bad_lines='skip')
-            print(f"✅ Loaded {len(region_df)} rows from noc_regions.csv")
-        except Exception as e:
-            print(f"❌ Error loading noc_regions.csv: {e}")
+        region_df = pd.read_csv(noc_path, encoding='latin1')
+        print(f"✅ Loaded noc_regions.csv with {len(region_df)} rows")
     else:
-        print(f"❌ noc_regions.csv not found at: {noc_path}")
+        print(f"❌ noc_regions.csv NOT FOUND!")
+        region_df = None
+
+    # Process the real data
+    print("\n🔧 Processing REAL Olympic data...")
 
     # Filter for Summer Olympics
-    print("\n🔧 Processing data...")
     if 'Season' in df.columns:
         original_count = len(df)
-        df = df[df['Season'] == 'Summer']
-        print(f"   ✅ Filtered Summer Olympics: {original_count} → {len(df)} rows")
-    else:
-        print("   ⚠️ 'Season' column not found, skipping filter")
+        df = df[df['Season'] == 'Summer'].copy()
+        print(f"✅ Filtered Summer Olympics: {original_count} → {len(df)} rows")
 
     # Merge with region data
     if region_df is not None and 'NOC' in df.columns and 'NOC' in region_df.columns:
-        print(f"   ✅ Merging with region data...")
-        df = df.merge(region_df, on='NOC', how='left')
-        if 'region' in df.columns:
-            df['region'] = df['region'].fillna('Unknown')
-            print(f"   ✅ Region column created")
+        df = df.merge(region_df[['NOC', 'region']], on='NOC', how='left')
+        df['region'] = df['region'].fillna('Unknown')
+        print(f"✅ Merged with region data")
     else:
-        print(f"   ⚠️ Creating dummy region column")
         df['region'] = df['NOC'] if 'NOC' in df.columns else 'Unknown'
+        print(f"✅ Created region column from NOC")
 
-    # Create medal dummy columns
+    # Create medal columns
     if 'Medal' in df.columns:
-        print(f"   ✅ Creating medal dummy columns...")
-        medal_dummies = pd.get_dummies(df['Medal'])
-        for medal in ['Gold', 'Silver', 'Bronze']:
-            if medal not in medal_dummies.columns:
-                medal_dummies[medal] = 0
-        df = pd.concat([df, medal_dummies], axis=1)
-        print(f"   ✅ Medal columns: Gold, Silver, Bronze")
+        df['Gold'] = (df['Medal'] == 'Gold').astype(int)
+        df['Silver'] = (df['Medal'] == 'Silver').astype(int)
+        df['Bronze'] = (df['Medal'] == 'Bronze').astype(int)
+        print(f"✅ Created medal columns")
     else:
-        print(f"   ⚠️ 'Medal' column not found, creating empty medal columns")
         df['Gold'] = 0
         df['Silver'] = 0
         df['Bronze'] = 0
 
-    # Ensure all required columns exist
-    print(f"   ✅ Ensuring required columns exist...")
-    required_cols = ['Year', 'region', 'Medal', 'Sport', 'Name', 'City', 'Event', 'NOC']
-    for col in required_cols:
-        if col not in df.columns:
-            if col == 'Year':
-                df[col] = 2016
-                print(f"   ⚠️ Added missing column '{col}' with default value 2016")
-            elif col == 'City':
-                df[col] = 'Unknown'
-                print(f"   ⚠️ Added missing column '{col}' with default value 'Unknown'")
-            elif col == 'Event':
-                df[col] = df['Sport'] + ' - Event' if 'Sport' in df.columns else 'Unknown'
-                print(f"   ⚠️ Added missing column '{col}'")
-            else:
-                df[col] = 'Unknown'
-                print(f"   ⚠️ Added missing column '{col}' with default value 'Unknown'")
-
     # Remove duplicates
-    original_count = len(df)
-    df = df.drop_duplicates()
-    print(f"   ✅ Removed {original_count - len(df)} duplicates")
+    dup_cols = ['Team', 'NOC', 'Games', 'Year', 'Sport', 'Event', 'Medal']
+    existing_cols = [col for col in dup_cols if col in df.columns]
+    if existing_cols:
+        original_count = len(df)
+        df = df.drop_duplicates(subset=existing_cols)
+        print(f"✅ Removed {original_count - len(df)} duplicates")
 
-    # Final summary
-    print("\n" + "=" * 50)
-    print("PREPROCESSOR COMPLETED SUCCESSFULLY")
-    print("=" * 50)
-    print(f"📊 Final DataFrame shape: {df.shape}")
-    print(f"📊 Final columns: {df.columns.tolist()}")
-
-    # Critical column check
-    print("\n🔍 CRITICAL COLUMN CHECK:")
-    if 'Year' in df.columns:
-        print(f"   ✅ 'Year' column EXISTS")
-        print(f"   📅 Year range: {int(df['Year'].min())} to {int(df['Year'].max())}")
-    else:
-        print(f"   ❌ 'Year' column MISSING - THIS WILL CAUSE ERRORS!")
-
-    if 'region' in df.columns:
-        print(f"   ✅ 'region' column EXISTS")
-        print(f"   🌍 Number of regions: {df['region'].nunique()}")
-    else:
-        print(f"   ❌ 'region' column MISSING")
-
-    print("=" * 50)
+    # Final stats
+    print(f"\n{'=' * 50}")
+    print("✅ REAL OLYMPIC DATA LOADED SUCCESSFULLY!")
+    print(f"{'=' * 50}")
+    print(f"📊 Total rows: {len(df):,}")
+    print(f"📊 Total countries: {df['region'].nunique()}")
+    print(f"📊 Year range: {int(df['Year'].min())} - {int(df['Year'].max())}")
+    print(f"📊 Total sports: {df['Sport'].nunique()}")
+    print(f"{'=' * 50}")
 
     return df

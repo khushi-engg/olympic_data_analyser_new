@@ -3,6 +3,8 @@ import pandas as pd
 import preprocessor
 import helper
 import plotly.express as px
+import io
+import sys
 
 # ----------------- PAGE CONFIG ----------------- #
 st.set_page_config(page_title="Olympics Data Analysis", layout="wide")
@@ -11,11 +13,19 @@ st.set_page_config(page_title="Olympics Data Analysis", layout="wide")
 # ----------------- LOAD DATA WITH ERROR HANDLING ----------------- #
 @st.cache_data
 def load_data():
+    # Capture print statements
+    old_stdout = sys.stdout
+    sys.stdout = captured_output = io.StringIO()
+
     try:
         df = preprocessor.preprocess()
+
+        # Get all print statements from preprocessor
+        preprocessor_logs = captured_output.getvalue()
+
         if df is None or df.empty:
             st.error("❌ Failed to load Olympics data. Please check if the data files exist.")
-            return pd.DataFrame()
+            return pd.DataFrame(), preprocessor_logs
 
         # Verify required columns exist
         required_cols = ['Year', 'region', 'Medal', 'Sport', 'Name', 'City', 'Event', 'NOC']
@@ -27,16 +37,38 @@ def load_data():
             for col in missing_cols:
                 df[col] = None
 
-        return df
+        return df, preprocessor_logs
     except Exception as e:
         st.error(f"❌ Error loading data: {str(e)}")
-        return pd.DataFrame()
+        return pd.DataFrame(), captured_output.getvalue()
+    finally:
+        sys.stdout = old_stdout
 
 
-df = load_data()
+df, preprocessor_logs = load_data()
+
+# ----------------- DEBUG INFORMATION (NOW WITH PREPROCESSOR LOGS) ----------------- #
+with st.expander("🔧 Debug Information - Click to Expand"):
+    st.write("### 📋 Preprocessor Logs:")
+    st.code(preprocessor_logs)
+
+    st.write("### 📊 DataFrame Info:")
+    st.write(f"**Shape:** {df.shape}")
+    st.write(f"**Columns:** {df.columns.tolist()}")
+
+    if not df.empty:
+        st.write("**First 5 rows:**")
+        st.dataframe(df.head())
+        st.write("**Year range:**", df['Year'].min(), "to", df['Year'].max())
+        st.write("**Unique regions:**", df['region'].nunique() if 'region' in df.columns else "No region column")
+        st.write("**Unique sports:**", df['Sport'].nunique() if 'Sport' in df.columns else "No sport column")
+        st.success("✅ DataFrame loaded successfully!")
+    else:
+        st.error("❌ DataFrame is EMPTY!")
 
 # ----------------- CHECK IF DATA IS LOADED ----------------- #
 if df.empty:
+    st.warning("No data available. Please check the debug information above.")
     st.stop()  # Stop execution if no data
 
 # ----------------- MAIN TITLE ----------------- #

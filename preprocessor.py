@@ -1,4 +1,4 @@
-# preprocessor.py - ULTIMATE VERSION FOR STREAMLIT CLOUD
+# preprocessor.py - FIXED FOR BUFFER OVERFLOW ERROR
 
 import pandas as pd
 import os
@@ -6,100 +6,90 @@ import sys
 
 
 def preprocess():
-    """Load Olympic data with ultimate path handling for Streamlit Cloud"""
+    """Load Olympic data with fix for buffer overflow error"""
 
-    # Print debug info that will be captured by app.py
     print("=" * 50)
     print("PREPROCESSOR STARTED")
     print("=" * 50)
 
     # Get the directory where this script is located
     try:
-        # For local development
         current_dir = os.path.dirname(os.path.abspath(__file__))
         print(f"📁 Script directory: {current_dir}")
     except:
-        # For Streamlit Cloud
         current_dir = os.getcwd()
         print(f"📁 Current working directory: {current_dir}")
 
-    # List all files in current directory (for debugging)
-    print("\n📋 Files in current directory:")
-    try:
-        for file in os.listdir(current_dir):
-            size = os.path.getsize(os.path.join(current_dir, file)) if os.path.isfile(
-                os.path.join(current_dir, file)) else 0
-            print(f"   - {file} ({size} bytes)")
-    except:
-        print("   Could not list directory contents")
+    # Streamlit Cloud specific path
+    streamlit_cloud_path = '/mount/src/olympic_data_analyser_new/athlete_events.csv'
 
-    # SPECIFIC PATH FOR STREAMLIT CLOUD (from your error logs)
-    streamlit_cloud_base = '/mount/src/olympic_data_analyser_new'
+    print(f"\n🔍 Checking for file at: {streamlit_cloud_path}")
 
-    # Try multiple possible paths for the CSV files - ORDERED BY LIKELIHOOD
-    possible_paths = [
-        # Streamlit Cloud specific path (MOST LIKELY)
-        os.path.join(streamlit_cloud_base, 'athlete_events.csv'),
+    if os.path.exists(streamlit_cloud_path):
+        print(f"✅ File exists! Size: {os.path.getsize(streamlit_cloud_path)} bytes")
 
-        # Current directory
-        os.path.join(current_dir, 'athlete_events.csv'),
+        # TRY DIFFERENT READING METHODS TO AVOID BUFFER OVERFLOW
+        print("\n📖 Attempting to read with different methods:")
 
-        # Parent directory
-        os.path.join(os.path.dirname(current_dir), 'athlete_events.csv'),
+        # Method 1: Use chunks (most reliable for large files)
+        try:
+            print("   Method 1: Reading with chunks...")
+            chunk_iter = pd.read_csv(streamlit_cloud_path,
+                                     encoding='latin1',
+                                     chunksize=10000,
+                                     on_bad_lines='skip')
+            df = pd.concat(chunk_iter, ignore_index=True)
+            print(f"   ✅ SUCCESS! Loaded {len(df)} rows using chunks")
+        except Exception as e:
+            print(f"   ❌ Method 1 failed: {e}")
+            df = None
 
-        # Data subdirectory
-        os.path.join(current_dir, 'data', 'athlete_events.csv'),
-
-        # Relative path
-        'athlete_events.csv',
-
-        # Absolute path from root (just in case)
-        '/athlete_events.csv',
-    ]
-
-    # Load athlete_events.csv
-    df = None
-    athlete_path = None
-
-    print("\n🔍 Searching for athlete_events.csv...")
-    for i, path in enumerate(possible_paths, 1):
-        print(f"   Path {i}: {path}")
-        if os.path.exists(path):
-            print(f"   ✅ FOUND at: {path}")
-            athlete_path = path
+        # Method 2: Try with different engine if method 1 failed
+        if df is None:
             try:
-                df = pd.read_csv(path, encoding='latin1', on_bad_lines='skip')
-                print(f"   ✅ Loaded {len(df)} rows")
-                break
+                print("   Method 2: Reading with python engine...")
+                df = pd.read_csv(streamlit_cloud_path,
+                                 encoding='latin1',
+                                 engine='python',
+                                 on_bad_lines='skip')
+                print(f"   ✅ SUCCESS! Loaded {len(df)} rows with python engine")
             except Exception as e:
-                print(f"   ❌ Error reading: {e}")
-                continue
-        else:
-            print(f"   ❌ Not found")
+                print(f"   ❌ Method 2 failed: {e}")
+                df = None
+
+        # Method 3: Try with low_memory=False
+        if df is None:
+            try:
+                print("   Method 3: Reading with low_memory=False...")
+                df = pd.read_csv(streamlit_cloud_path,
+                                 encoding='latin1',
+                                 low_memory=False,
+                                 on_bad_lines='skip')
+                print(f"   ✅ SUCCESS! Loaded {len(df)} rows with low_memory=False")
+            except Exception as e:
+                print(f"   ❌ Method 3 failed: {e}")
+                df = None
+    else:
+        print(f"❌ File NOT found at: {streamlit_cloud_path}")
+        return pd.DataFrame(columns=['Year', 'region', 'Medal', 'Sport', 'Name', 'City', 'Event', 'NOC', 'Season'])
 
     if df is None:
-        print("\n❌ CRITICAL: Could not find athlete_events.csv in any location!")
-        print("Returning empty DataFrame with required columns")
+        print("\n❌ CRITICAL: All reading methods failed!")
         return pd.DataFrame(columns=['Year', 'region', 'Medal', 'Sport', 'Name', 'City', 'Event', 'NOC', 'Season'])
 
     # Load noc_regions.csv
+    noc_path = streamlit_cloud_path.replace('athlete_events.csv', 'noc_regions.csv')
     region_df = None
-    print("\n🔍 Searching for noc_regions.csv...")
 
-    for i, path in enumerate(possible_paths, 1):
-        noc_path = path.replace('athlete_events.csv', 'noc_regions.csv')
-        print(f"   Path {i}: {noc_path}")
-        if os.path.exists(noc_path):
-            print(f"   ✅ FOUND at: {noc_path}")
-            try:
-                region_df = pd.read_csv(noc_path, encoding='latin1', on_bad_lines='skip')
-                print(f"   ✅ Loaded {len(region_df)} rows")
-                break
-            except Exception as e:
-                print(f"   ❌ Error reading: {e}")
-                continue
-        else:
-            print(f"   ❌ Not found")
+    print(f"\n🔍 Loading noc_regions.csv from: {noc_path}")
+    if os.path.exists(noc_path):
+        try:
+            region_df = pd.read_csv(noc_path, encoding='latin1', on_bad_lines='skip')
+            print(f"✅ Loaded {len(region_df)} rows from noc_regions.csv")
+        except Exception as e:
+            print(f"❌ Error loading noc_regions.csv: {e}")
+    else:
+        print(f"❌ noc_regions.csv not found at: {noc_path}")
 
     # Filter for Summer Olympics
     print("\n🔧 Processing data...")
